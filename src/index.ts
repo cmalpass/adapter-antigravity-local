@@ -6,7 +6,8 @@ export const type = "antigravity_local";
 export const label = "Antigravity CLI (local)";
 
 // O Antigravity usa scripts diretos de instalação (Go bin) em vez de NPM
-export const SANDBOX_INSTALL_COMMAND = "curl -sSL https://antigravity.google/install.sh | bash";
+export const SANDBOX_INSTALL_COMMAND = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
+
 
 export const DEFAULT_ANTIGRAVITY_LOCAL_MODEL = "auto";
 
