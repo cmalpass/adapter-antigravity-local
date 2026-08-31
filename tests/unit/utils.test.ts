@@ -5,7 +5,9 @@ import {
   firstNonEmptyLine,
   parseCommaArgs,
   commandLooksLike,
+  resolveModelCliArgs,
 } from "../../src/utils.js";
+
 
 /**
  * Unit test suite for global utility helper functions.
@@ -124,4 +126,34 @@ describe("global utilities", () => {
       expect(commandLooksLike(null as any, "agy")).toBe(false);
     });
   });
+
+  /**
+   * Tests for `resolveModelCliArgs`.
+   * Validates flag building for models with explicit and implicit effort levels.
+   */
+  describe("resolveModelCliArgs", () => {
+    it("should return empty array for auto or empty models", () => {
+      expect(resolveModelCliArgs("auto")).toEqual([]);
+      expect(resolveModelCliArgs("")).toEqual([]);
+      expect(resolveModelCliArgs("   ")).toEqual([]);
+    });
+
+    it("should parse explicit effort suffixes correctly", () => {
+      expect(resolveModelCliArgs("gemini-3.7-flash-high")).toEqual(["--model", "gemini-3.7-flash", "--effort", "high"]);
+      expect(resolveModelCliArgs("gemini-3.7-flash-medium")).toEqual(["--model", "gemini-3.7-flash", "--effort", "medium"]);
+      expect(resolveModelCliArgs("gemini-3.7-flash-low")).toEqual(["--model", "gemini-3.7-flash", "--effort", "low"]);
+      expect(resolveModelCliArgs("gemini-3.1-pro-high")).toEqual(["--model", "gemini-3.1-pro", "--effort", "high"]);
+    });
+
+    it("should default effort to high for unsuffixed gemini reasoning models", () => {
+      expect(resolveModelCliArgs("gemini-3.7-flash")).toEqual(["--model", "gemini-3.7-flash", "--effort", "high"]);
+      expect(resolveModelCliArgs("gemini-3.1-pro")).toEqual(["--model", "gemini-3.1-pro", "--effort", "high"]);
+    });
+
+    it("should pass standalone models directly", () => {
+      expect(resolveModelCliArgs("claude-sonnet-4.6-thinking")).toEqual(["--model", "claude-sonnet-4.6-thinking"]);
+      expect(resolveModelCliArgs("gpt-oss-120b")).toEqual(["--model", "gpt-oss-120b"]);
+    });
+  });
 });
+

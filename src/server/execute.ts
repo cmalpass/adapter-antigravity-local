@@ -38,9 +38,11 @@ import {
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_ANTIGRAVITY_LOCAL_MODEL, SANDBOX_INSTALL_COMMAND } from "../index.js";
-import { firstNonEmptyLine } from "../utils.js";
+import { firstNonEmptyLine, resolveModelCliArgs } from "../utils.js";
+import { parseAntigravityJsonResponse } from "./parse.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
 
 /**
  * Resolves the effective working directory (CWD) paths based on agent instructions, 
@@ -139,16 +141,22 @@ function compileAgentPrompt(
  */
 function compileAgyArguments(
   prompt: string,
+  model: string,
   resumeSessionId: string | null,
   workspaces: unknown[],
   sandbox: boolean,
   extraArgs: string[]
 ): string[] {
-  const args = ["--print", prompt];
+  const args = ["--print", prompt, "--output-format", "json"];
   if (resumeSessionId) {
     args.push("--conversation", resumeSessionId);
   }
   
+  const modelArgs = resolveModelCliArgs(model);
+  if (modelArgs.length > 0) {
+    args.push(...modelArgs);
+  }
+
   for (const ws of workspaces) {
     const wsObj = parseObject(ws);
     const wsCwd = asString(wsObj.cwd, "");
@@ -294,7 +302,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const runAttempt = async (resumeSessionId: string | null) => {
     const workspaces = Array.isArray(context.paperclipWorkspaces) ? context.paperclipWorkspaces : [];
-    const args = compileAgyArguments(prompt, resumeSessionId, workspaces, sandbox, extraArgs);
+    const args = compileAgyArguments(prompt, model, resumeSessionId, workspaces, sandbox, extraArgs);
     
     if (onMeta) {
       await onMeta({
@@ -339,9 +347,17 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const rawStderr = proc.stderr.trim();
     const fallbackErrorMessage = firstNonEmptyLine(rawStderr) || `Antigravity exited with code ${proc.exitCode ?? -1}`;
 
-    const resolvedSessionParams = sessionId
+    const parsedJson = parseAntigravityJsonResponse(rawStdout);
+    const parsedResponseText = parsedJson?.response?.trim() ?? rawStdout;
+    const resolvedSessionId = parsedJson?.conversation_id || sessionId || null;
+
+    const inputTokens = parsedJson?.usage?.input_tokens ?? 0;
+    const outputTokens = parsedJson?.usage?.output_tokens ?? 0;
+    const cachedInputTokens = parsedJson?.usage?.cache_read_tokens ?? 0;
+
+    const resolvedSessionParams = resolvedSessionId
       ? {
-          sessionId,
+          sessionId: resolvedSessionId,
           cwd: effectiveExecutionCwd,
           ...(asString(workspaceContext.workspaceId, "") ? { workspaceId: workspaceContext.workspaceId } : {}),
           ...(executionTargetIsRemote ? { remoteExecution: adapterExecutionTargetSessionIdentity(runtimeExecutionTarget) } : {}),
@@ -354,17 +370,21 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       timedOut: false,
       errorMessage: failed ? fallbackErrorMessage : null,
       errorCode: null,
-      usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
-      sessionId: sessionId || null,
+      usage: {
+        inputTokens,
+        outputTokens,
+        cachedInputTokens,
+      },
+      sessionId: resolvedSessionId,
       sessionParams: resolvedSessionParams,
-      sessionDisplayId: sessionId || null,
+      sessionDisplayId: resolvedSessionId,
       provider: "google",
       biller: "google",
       model,
       billingType: "api",
       costUsd: null,
-      resultJson: { raw: rawStdout },
-      summary: failed ? "" : rawStdout,
+      resultJson: parsedJson ? { raw: rawStdout, json: parsedJson } : { raw: rawStdout },
+      summary: failed ? "" : parsedResponseText,
       question: null,
       clearSession: false,
     };

@@ -115,3 +115,60 @@ export function describeAntigravityFailure(stdout: string, stderr: string): stri
   }
   return `Antigravity run failed: ${lines[0]}`;
 }
+
+/**
+ * Structured schema representing the native JSON output produced by `agy --output-format json`.
+ */
+export interface AntigravityJsonResponse {
+  conversation_id?: string;
+  status?: string;
+  response?: string;
+  duration_seconds?: number;
+  num_turns?: number;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    thinking_tokens?: number;
+    cache_read_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+/**
+ * Safely parses the stdout output produced by `agy --output-format json`.
+ * Recovers JSON payloads even when surrounded by prefix/suffix logs or formatting anomalies.
+ *
+ * @param stdout - The stdout string output from the agy process.
+ * @returns The parsed structured response, or null if invalid JSON.
+ */
+export function parseAntigravityJsonResponse(stdout: string): AntigravityJsonResponse | null {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  // Attempt direct JSON parse
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as AntigravityJsonResponse;
+    }
+  } catch {
+    // Attempt to extract the JSON object block from within mixed logs
+    const startIdx = trimmed.indexOf("{");
+    const endIdx = trimmed.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx > startIdx) {
+      try {
+        const candidate = trimmed.slice(startIdx, endIdx + 1);
+        const parsed = JSON.parse(candidate);
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          return parsed as AntigravityJsonResponse;
+        }
+      } catch {
+        // Fallback failed
+      }
+    }
+  }
+
+  return null;
+}

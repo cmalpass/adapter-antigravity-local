@@ -78,6 +78,45 @@ Without it, Paperclip may classify the adapter as a builtin adapter and it may n
 
 ---
 
+## Running in Docker / Container Environments
+
+### 1. Install Antigravity CLI in Container
+Add the following to your `Dockerfile` or run inside the container:
+
+```bash
+curl -sSL https://antigravity.google/install.sh | bash
+export PATH="$HOME/.gemini/antigravity-cli/bin:$HOME/.local/bin:$PATH"
+```
+
+### 2. Persisting Authentication Across Container Restarts
+
+Antigravity stores OAuth tokens and configuration in `~/.gemini/`.
+
+#### Approach A: Host Mount (Recommended)
+Mount your host's authenticated `~/.gemini` folder into the container's home directory:
+
+```yaml
+# docker-compose.yml
+services:
+  paperclip:
+    image: paperclip:latest
+    volumes:
+      - ~/.gemini:/root/.gemini
+      - ~/.paperclip:/root/.paperclip
+      - ./workspace:/workspace
+    environment:
+      - PATH=/root/.gemini/antigravity-cli/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+#### Approach B: In-Container Login with Named Volume
+If running on an isolated server:
+
+1. Map a named volume to `/root/.gemini` (e.g. `agy-auth-data:/root/.gemini`).
+2. Run `agy --print "hello" --dangerously-skip-permissions` inside the container.
+3. Open the OAuth link in your browser, complete Google login, and credentials will persist to the volume.
+
+---
+
 ## Restart Paperclip
 
 Stop the server:
@@ -102,9 +141,9 @@ Create or edit an agent.
 
 Verify that:
 
-* Antigravity Local appears in the Adapter dropdown.
-* Available models are displayed correctly.
-* Requests are executed through the local Antigravity CLI.
+* **Antigravity Local** appears in the Adapter dropdown.
+* Modern models (`Gemini 3.7 Flash (High/Med/Low)`, `Claude Sonnet 4.6 (Thinking)`, etc.) are displayed correctly.
+* Multi-turn conversations resume seamlessly and token spend is tracked.
 
 ---
 
@@ -130,12 +169,11 @@ npm install @weslleycapelari/adapter-antigravity-local
 
 ### Changes not applied
 
-Restart the Paperclip server.
-
-Paperclip caches adapter metadata during startup.
+Restart the Paperclip server. Paperclip caches adapter metadata during startup.
 
 ---
 
 ## Acknowledgements
 
 Special thanks to Ryan Lee for helping test the Paperclip integration, identifying adapter registration requirements, and contributing setup documentation and feedback.
+

@@ -5,7 +5,9 @@ import {
   detectAntigravityQuotaExhausted,
   isAntigravityTurnLimitResult,
   describeAntigravityFailure,
+  parseAntigravityJsonResponse,
 } from "../../src/server/parse.js";
+
 
 /**
  * Unit test suite for Antigravity stdout/stderr telemetry and error parsers.
@@ -101,4 +103,51 @@ describe("parse server helpers", () => {
       expect(describeAntigravityFailure("", complexStderr)).toBe("Antigravity run failed: Actual error message here");
     });
   });
+
+  /**
+   * Tests for JSON response parsing from `agy --output-format json`.
+   */
+  describe("parseAntigravityJsonResponse", () => {
+    it("parses valid JSON output cleanly", () => {
+      const jsonStr = JSON.stringify({
+        conversation_id: "conv-123",
+        status: "SUCCESS",
+        response: "Hello there!",
+        duration_seconds: 1.5,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_tokens: 10,
+        },
+      });
+
+      const parsed = parseAntigravityJsonResponse(jsonStr);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.conversation_id).toBe("conv-123");
+      expect(parsed?.response).toBe("Hello there!");
+      expect(parsed?.usage?.input_tokens).toBe(100);
+      expect(parsed?.usage?.output_tokens).toBe(50);
+      expect(parsed?.usage?.cache_read_tokens).toBe(10);
+    });
+
+    it("recovers JSON embedded within surrounding log messages", () => {
+      const mixedOutput = `
+[DEBUG] Initializing plugins...
+{"conversation_id":"conv-456","status":"SUCCESS","response":"Embedded message"}
+[INFO] Finished turn.
+      `;
+
+      const parsed = parseAntigravityJsonResponse(mixedOutput);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.conversation_id).toBe("conv-456");
+      expect(parsed?.response).toBe("Embedded message");
+    });
+
+    it("returns null for non-JSON content or empty output", () => {
+      expect(parseAntigravityJsonResponse("")).toBeNull();
+      expect(parseAntigravityJsonResponse("Plain text error message")).toBeNull();
+      expect(parseAntigravityJsonResponse("{ incomplete json ")).toBeNull();
+    });
+  });
 });
+

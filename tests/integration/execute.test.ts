@@ -55,7 +55,7 @@ describe("antigravity local execution", () => {
    * Assures that a basic local run correctly resolves and spawns the `agy` process
    * with the expected prompt and unattended permission flags.
    */
-  it("successfully invokes agy with local command and correct prompt", async () => {
+  it("successfully invokes agy with local command, correct prompt, and json output format", async () => {
     const result = await execute({
       runId: "run-local-1",
       agent: {
@@ -90,14 +90,16 @@ describe("antigravity local execution", () => {
     const callArgs = runAdapterExecutionTargetProcess.mock.calls[0] as unknown as [string, unknown, string, string[]];
     const cliArgs = callArgs[3];
     expect(cliArgs).toContain("--print");
+    expect(cliArgs).toContain("--output-format");
+    expect(cliArgs).toContain("json");
     expect(cliArgs).toContain("--dangerously-skip-permissions");
   });
 
   /**
-   * Asserts that model selection is correctly bound to `env.ANTIGRAVITY_MODEL`
-   * and that no invalid `--model` CLI parameters are appended.
+   * Asserts that model selection is correctly compiled to `--model` and `--effort` CLI parameters
+   * as well as `env.ANTIGRAVITY_MODEL`.
    */
-  it("configures model via env.ANTIGRAVITY_MODEL and does not pass --model CLI flag", async () => {
+  it("configures model via CLI flags and env.ANTIGRAVITY_MODEL", async () => {
     await execute({
       runId: "run-local-2",
       agent: {
@@ -115,7 +117,7 @@ describe("antigravity local execution", () => {
       },
       config: {
         command: "agy",
-        model: "claude-sonnet-4.6-thinking",
+        model: "gemini-3.7-flash-high",
       },
       context: {
         paperclipWorkspace: {
@@ -130,8 +132,68 @@ describe("antigravity local execution", () => {
     const cliArgs = callArgs[3];
     const options = callArgs[4];
 
-    expect(cliArgs).not.toContain("--model");
-    expect(options.env.ANTIGRAVITY_MODEL).toBe("claude-sonnet-4.6-thinking");
+    expect(cliArgs).toContain("--model");
+    expect(cliArgs[cliArgs.indexOf("--model") + 1]).toBe("gemini-3.7-flash");
+    expect(cliArgs).toContain("--effort");
+    expect(cliArgs[cliArgs.indexOf("--effort") + 1]).toBe("high");
+    expect(options.env.ANTIGRAVITY_MODEL).toBe("gemini-3.7-flash-high");
+  });
+
+  /**
+   * Asserts that structured JSON responses parse conversation ID and usage tokens.
+   */
+  it("parses structured JSON output for session resumption and token metrics", async () => {
+    runAdapterExecutionTargetProcess.mockResolvedValueOnce({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      stdout: JSON.stringify({
+        conversation_id: "conv-unique-999",
+        status: "SUCCESS",
+        response: "Executed successfully.",
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 350,
+          cache_read_tokens: 400,
+        },
+      }),
+      stderr: "",
+      pid: 124,
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await execute({
+      runId: "run-local-json",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Antigravity CEO",
+        adapterType: "antigravity_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "agy",
+      },
+      context: {
+        paperclipWorkspace: {
+          cwd: "/home/user/workspace",
+          source: "project_primary",
+        },
+      },
+      onLog: async () => {},
+    });
+
+    expect(result.summary).toBe("Executed successfully.");
+    expect(result.sessionId).toBe("conv-unique-999");
+    expect(result.usage.inputTokens).toBe(1200);
+    expect(result.usage.outputTokens).toBe(350);
+    expect(result.usage.cachedInputTokens).toBe(400);
   });
 
   /**
@@ -183,3 +245,4 @@ describe("antigravity local execution", () => {
     expect(cliArgs[addDirIndices[1] + 1]).toBe("/home/user/workspace-2");
   });
 });
+

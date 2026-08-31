@@ -95,3 +95,38 @@ export function commandLooksLike(command: string, expected: string): boolean {
   const expectedLower = expected.toLowerCase();
   return base === expectedLower || base === `${expectedLower}.cmd` || base === `${expectedLower}.exe`;
 }
+
+/**
+ * Resolves CLI arguments for model selection and reasoning effort level.
+ * Maps composite model IDs (e.g., "gemini-3.7-flash-high") to their respective
+ * `--model` and `--effort` CLI parameters for `agy`.
+ *
+ * @param model - Model identifier string or "auto".
+ * @returns Array of CLI flags (e.g., `["--model", "gemini-3.7-flash", "--effort", "high"]`).
+ */
+export function resolveModelCliArgs(model: string): string[] {
+  if (!model || model === "auto") {
+    return [];
+  }
+
+  const trimmed = model.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+
+  // Handle explicit effort suffix like gemini-3.7-flash-high or gemini-3.1-pro-low
+  const effortSuffixMatch = trimmed.match(/^(.+)-(low|medium|high)$/i);
+  if (effortSuffixMatch) {
+    const baseModel = effortSuffixMatch[1];
+    const effort = effortSuffixMatch[2].toLowerCase();
+    return ["--model", baseModel, "--effort", effort];
+  }
+
+  // Gemini models require --effort when invoked by slug without suffix
+  if (/^gemini-(?:3\.\d+)-(?:flash|pro)$/i.test(trimmed)) {
+    return ["--model", trimmed, "--effort", "high"];
+  }
+
+  return ["--model", trimmed];
+}
+

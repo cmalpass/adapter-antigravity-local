@@ -31,8 +31,9 @@ import {
   resolveAdapterExecutionTargetCwd,
 } from "@paperclipai/adapter-utils/execution-target";
 import { DEFAULT_ANTIGRAVITY_LOCAL_MODEL, SANDBOX_INSTALL_COMMAND } from "../index.js";
-import { detectAntigravityAuthRequired, detectAntigravityQuotaExhausted } from "./parse.js";
-import { firstNonEmptyLine, commandLooksLike, isNonEmptyString } from "../utils.js";
+import { detectAntigravityAuthRequired, detectAntigravityQuotaExhausted, parseAntigravityJsonResponse } from "./parse.js";
+import { firstNonEmptyLine, commandLooksLike, isNonEmptyString, resolveModelCliArgs } from "../utils.js";
+
 
 /**
  * Summarizes the combined status from a list of environmental diagnostic checks.
@@ -190,6 +191,7 @@ async function performHelloTelemetryProbe(
 
   const sandbox = asBoolean(config.sandbox, false);
   const helloProbeTimeoutSec = Math.max(1, asNumber(config.helloProbeTimeoutSec, 60));
+  const model = asString(config.model, DEFAULT_ANTIGRAVITY_LOCAL_MODEL).trim();
   
   const extraArgs = (() => {
     const fromExtraArgs = asStringArray(config.extraArgs);
@@ -197,7 +199,12 @@ async function performHelloTelemetryProbe(
     return asStringArray(config.args);
   })();
 
-  const args = ["--print", "Respond with hello."];
+  const args = ["--print", "Respond with hello.", "--output-format", "json"];
+  const modelArgs = resolveModelCliArgs(model);
+  if (modelArgs.length > 0) {
+    args.push(...modelArgs);
+  }
+
   args.push("--dangerously-skip-permissions");
   if (sandbox) {
     args.push("--sandbox");
@@ -248,8 +255,9 @@ async function performHelloTelemetryProbe(
       hint: "Retry the probe. If this persists, verify Antigravity can run manually.",
     });
   } else if ((probe.exitCode ?? 1) === 0) {
-    const summary = probe.stdout.trim().toLowerCase();
-    const hasHello = summary.includes("hello") || summary.includes("olá");
+    const parsedJson = parseAntigravityJsonResponse(probe.stdout);
+    const summary = (parsedJson?.response || probe.stdout).trim().toLowerCase();
+    const hasHello = summary.includes("hello") || summary.includes("olá") || parsedJson?.status === "SUCCESS";
     
     checks.push({
       code: hasHello ? "antigravity_hello_probe_passed" : "antigravity_hello_probe_unexpected_output",
@@ -275,6 +283,7 @@ async function performHelloTelemetryProbe(
     });
   }
 }
+
 
 /**
  * Diagnostic pipeline testing the Antigravity installation and credentials environment.

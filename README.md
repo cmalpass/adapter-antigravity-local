@@ -3,36 +3,42 @@
 [![npm version](https://img.shields.io/npm/v/@weslleycapelari/adapter-antigravity-local.svg?style=flat-square)](https://www.npmjs.com/package/@weslleycapelari/adapter-antigravity-local)
 [![Build & Test Status](https://img.shields.io/github/actions/workflow/status/weslleycapelari/adapter-antigravity-local/publish.yml?style=flat-square)](https://github.com/weslleycapelari/adapter-antigravity-local/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Tests Passed](https://img.shields.io/badge/Tests--Passed-62%20/%2062-brightgreen?style=flat-square)](tests)
+[![Tests Passed](https://img.shields.io/badge/Tests--Passed-70%20/%2070-brightgreen?style=flat-square)](tests)
 
 An official-grade, high-performance **Paperclip AI** adapter designed for running **Google Antigravity** (`agy` CLI) agents locally.
 
-This adapter acts as a drop-in, robust, and type-safe replacement for the deprecated Gemini CLI integrations. It allows Paperclip agents to execute prompts through the modern Google Antigravity engine while supporting workspace synchronization, dynamic model selection, environment bindings, and sandboxed execution.
+This adapter acts as a drop-in, robust, and type-safe replacement for legacy CLI integrations. It allows Paperclip agents to execute prompts through the modern Google Antigravity engine while supporting multi-turn conversation resumption, live token metrics, dynamic model & effort routing, workspace synchronization, and sandboxed execution.
 
 ---
 
 ## ⚡ Key Features
 
-- **🚀 Native Go CLI Performance**: Spawns the local `agy` binary with fast startup times, low system footprint, and real-time terminal stdout streaming.
+- **🚀 Native Go CLI Performance**: Spawns the local `agy` binary with fast startup times, low system footprint, and real-time streaming.
+- **💬 Multi-Turn Session Resumption**: Employs `--output-format json` to capture native `conversation_id` and resume conversational context seamlessly across turns via `--conversation`.
+- **📊 Real Token Analytics**: Accurately tracks `input_tokens`, `output_tokens`, and `cache_read_tokens` for Paperclip usage and cost reporting.
+- **🧠 Dynamic Model & Reasoning Effort Routing**: Automatically translates selected models into `--model <model>` and `--effort <low|medium|high>` CLI flags.
 - **📂 Multi-Workspace Sync**: Automatically registers and mounts multiple active Paperclip workspaces into `agy` using repeatable `--add-dir <cwd>` arguments.
 - **⚙️ Headless Resiliency**: Enforces unattended command executions with `--dangerously-skip-permissions` to bypass OS prompt gates in headless containers.
 - **🔒 Isolated Sandboxing**: Enforces strict execution limits and file-system restrictions by appending the `--sandbox` parameter.
-- **🛠️ Self-Testing Diagnostics**: Bundles the `testEnvironment` probe checking command availability, workspace permissions, environment variables, and live API credentials via an active "hello" telemetry probe.
-- **🛡️ Edge Case Mitigation**: Built-in regex parsers resistant to irregular spacing, multiline empty logs, case-insensitive outputs, and rate limits (HTTP 429).
+- **🛠️ Self-Testing Diagnostics**: Bundles the `testEnvironment` probe checking command availability, workspace permissions, environment variables, and live API credentials via an active JSON telemetry probe.
 
 ---
 
 ## 🤖 Supported Models
 
-Models are routed dynamically via the `ANTIGRAVITY_MODEL` environment variable (rather than invalid CLI flags).
+Models are dynamically routed via CLI parameters (`--model` and `--effort`) with backward-compatible environment variable bindings.
 
-| Model Family | Supported Profiles & Identifiers |
-|---|---|
-| **Gemini 3.5 Flash** | `gemini-3.5-flash` |
-| **Gemini 3.1 Pro** | `gemini-3.1-pro-high`, `gemini-3.1-pro-low` |
-| **Claude Sonnet 4.6** | `claude-sonnet-4.6-thinking`, `claude-sonnet-4.6-standard` |
-| **Claude Opus 4.6** | `claude-opus-4.6-thinking` |
-| **GPT-OSS 120B** | `gpt-oss-120b-medium` |
+| Model Family | Supported Profiles & Identifiers | Reasoning Effort Levels |
+|---|---|---|
+| **Gemini 3.7 Flash** | `gemini-3.7-flash-high`, `gemini-3.7-flash-medium`, `gemini-3.7-flash-low` | `high`, `medium`, `low` |
+| **Gemini 3.6 Flash** | `gemini-3.6-flash-high`, `gemini-3.6-flash-medium`, `gemini-3.6-flash-low` | `high`, `medium`, `low` |
+| **Gemini 3.5 Flash** | `gemini-3.5-flash-high`, `gemini-3.5-flash-medium`, `gemini-3.5-flash-low` | `high`, `medium`, `low` |
+| **Gemini 3.1 Pro** | `gemini-3.1-pro-high`, `gemini-3.1-pro-low` | `high`, `low` |
+| **Claude Sonnet 4.6** | `claude-sonnet-4.6-thinking` | Built-in |
+| **Claude Opus 4.6** | `claude-opus-4.6-thinking` | Built-in |
+| **GPT-OSS 120B** | `gpt-oss-120b` | Medium |
+| **Auto** | `auto` | Global `settings.json` default |
+
 
 > *Note: Model availability depends on your local Antigravity installation and configuration.*
 
@@ -102,16 +108,15 @@ npm run typecheck
 
 ## 🧪 Architecture Quality & Testing (TDD)
 
-We maintain a senior-grade quality gate enforced by **62 unit & integration tests** running on **Vitest**. The test suite is isolated from production compilation bundles.
+We maintain a senior-grade quality gate enforced by **70 unit & integration tests** running on **Vitest**. The test suite is isolated from production compilation bundles.
 
 Execute the Test Suite:
 
 ```bash
 npm test
-
 ```
 
-*Runs 62 tests across CLI color event formatters, UI config builders, session serializers, skills symlink managers, and environment probes in less than `0.6s`.*
+*Runs 70 tests across CLI argument builders, model & effort parsers, JSON session serializers, token telemetry mappers, skills symlink managers, and environment probes in less than `0.3s`.*
 
 ---
 
@@ -123,10 +128,11 @@ Whenever you push a version tag starting with `v` (e.g., `v1.0.0`), the pipeline
 
 1. Setup Node 20 and install clean dependencies (`npm ci`).
 2. Run strict compiler typechecks (`npm run typecheck`).
-3. Run all **62 quality tests**. *Any failure aborts publication.*
+3. Run all **70 quality tests**. *Any failure aborts publication.*
 4. Compile production assets.
 5. Publish to the public npm registry.
 6. Create a formal **GitHub Release** with automated notes.
+
 
 > **Note:** Configure a secret named `NPM_TOKEN` in your GitHub Repository settings with an npm Access Token to allow automated publishing.
 
