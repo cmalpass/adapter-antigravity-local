@@ -1,5 +1,11 @@
 import { type ServerAdapterModule } from "@paperclipai/adapter-utils";
-import { execute, testEnvironment } from "./server/index.js";
+import {
+  execute,
+  testEnvironment,
+  listAntigravitySkills,
+  syncAntigravitySkills,
+  sessionCodec,
+} from "./server/index.js";
 import type { AntigravityModelDefinition, AntigravityModelProfileDefinition } from "./types.js";
 
 export const type = "antigravity_local";
@@ -8,8 +14,11 @@ export const label = "Antigravity CLI (local)";
 // O Antigravity usa scripts diretos de instalação (Go bin) em vez de NPM
 export const SANDBOX_INSTALL_COMMAND = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 
-
 export const DEFAULT_ANTIGRAVITY_LOCAL_MODEL = "auto";
+
+export const listSkills = listAntigravitySkills;
+export const syncSkills = syncAntigravitySkills;
+export { sessionCodec, execute, testEnvironment };
 
 export const models: AntigravityModelDefinition[] = [
   { id: DEFAULT_ANTIGRAVITY_LOCAL_MODEL, label: "Auto (Use global configured default)" },
@@ -40,8 +49,6 @@ export const modelProfiles: AntigravityModelProfileDefinition[] = [
     source: "adapter_default",
   },
 ];
-
-
 
 export const agentConfigurationDoc = `# antigravity_local agent configuration
 
@@ -75,6 +82,9 @@ export function createServerAdapter(): ServerAdapterModule {
     type,
     execute,
     testEnvironment,
+    listSkills: listAntigravitySkills,
+    syncSkills: syncAntigravitySkills,
+    sessionCodec,
     models,
     modelProfiles,
     supportsInstructionsBundle: true,

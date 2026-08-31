@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { syncAntigravitySkills } from "../../src/server/skills.js";
+import { syncAntigravitySkills, resolveAntigravitySkillsHome } from "../../src/server/skills.js";
+
 
 const { readPaperclipRuntimeSkillEntries } = vi.hoisted(() => ({
   readPaperclipRuntimeSkillEntries: vi.fn(async () => [
@@ -65,7 +66,7 @@ describe("skills integration", () => {
 
     expect(snapshot.adapterType).toBe("antigravity_local");
     
-    const pluginsDir = path.join(tempHome, ".agy", "plugins");
+    const pluginsDir = resolveAntigravitySkillsHome(ctx.config);
     
     const dirExists = await fs.stat(pluginsDir).then(s => s.isDirectory()).catch(() => false);
     expect(dirExists).toBe(true);
@@ -97,9 +98,10 @@ describe("skills integration", () => {
 
     await syncAntigravitySkills(ctx as any, []);
 
-    const pluginsDir = path.join(tempHome, ".agy", "plugins");
+    const pluginsDir = resolveAntigravitySkillsHome(ctx.config);
     const optionalLink = path.join(pluginsDir, "test-skill-plugin");
     const requiredLink = path.join(pluginsDir, "required-skill-plugin");
+
 
     const optionalExists = await fs.stat(optionalLink).catch(() => false);
     expect(optionalExists).toBe(false);

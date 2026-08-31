@@ -38,13 +38,13 @@ function readNonEmptyString(value: unknown): string | null {
 }
 
 /**
- * Resolves the effective target plugins directory path (`~/.agy/plugins`).
+ * Resolves the effective target skills directory path (`~/.gemini/antigravity-cli/builtin/skills`).
  * Respects customized HOME env variables configured within the adapter runtime context.
  *
  * @param config - The raw configuration object dictionary.
- * @returns Fully qualified absolute path to the Antigravity plugins directory.
+ * @returns Fully qualified absolute path to the Antigravity skills directory.
  */
-function resolveAntigravitySkillsHome(config: Record<string, unknown>): string {
+export function resolveAntigravitySkillsHome(config: Record<string, unknown>): string {
   const env =
     typeof config.env === "object" && config.env !== null && !Array.isArray(config.env)
       ? (config.env as Record<string, unknown>)
@@ -52,7 +52,7 @@ function resolveAntigravitySkillsHome(config: Record<string, unknown>): string {
   const configuredHome = readNonEmptyString(env.HOME);
   const home = configuredHome ? path.resolve(configuredHome) : os.homedir();
   
-  return path.join(home, ".agy", "plugins");
+  return path.join(home, ".gemini", "antigravity-cli", "builtin", "skills");
 }
 
 /**
@@ -73,12 +73,13 @@ async function buildAntigravitySkillSnapshot(config: Record<string, unknown>): P
     desiredSkills,
     installed,
     skillsHome,
-    locationLabel: "~/.agy/plugins",
-    missingDetail: "Configured but not currently linked into the Antigravity plugins home.",
-    externalConflictDetail: "Plugin name is occupied by an external installation.",
+    locationLabel: "~/.gemini/antigravity-cli/builtin/skills",
+    missingDetail: "Configured but not currently linked into the Antigravity skills home.",
+    externalConflictDetail: "Skill name is occupied by an external installation.",
     externalDetail: "Installed outside Paperclip management.",
   });
 }
+
 
 /**
  * Lists all registered, available, and conflicting Antigravity local skills.
