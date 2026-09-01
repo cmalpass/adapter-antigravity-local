@@ -244,5 +244,95 @@ describe("antigravity local execution", () => {
     expect(cliArgs[addDirIndices[0] + 1]).toBe("/home/user/workspace-1");
     expect(cliArgs[addDirIndices[1] + 1]).toBe("/home/user/workspace-2");
   });
+
+  /**
+   * Asserts that configured timeoutSec maps to --print-timeout <seconds>s.
+   */
+  it("maps configured timeoutSec to --print-timeout CLI argument", async () => {
+    await execute({
+      runId: "run-local-timeout",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Antigravity CEO",
+        adapterType: "antigravity_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "agy",
+        timeoutSec: 1800,
+      },
+      context: {
+        paperclipWorkspace: {
+          cwd: "/home/user/workspace",
+          source: "project_primary",
+        },
+      },
+      onLog: async () => {},
+    });
+
+    const callArgs = runAdapterExecutionTargetProcess.mock.calls[0] as unknown as [string, unknown, string, string[]];
+    const cliArgs = callArgs[3];
+    expect(cliArgs).toContain("--print-timeout");
+    expect(cliArgs[cliArgs.indexOf("--print-timeout") + 1]).toBe("1800s");
+  });
+
+  /**
+   * Asserts that structured quota errors from agy are surfaced as adapter_quota_exhausted.
+   */
+  it("surfaces structured quota errors as adapter_quota_exhausted", async () => {
+    runAdapterExecutionTargetProcess.mockResolvedValueOnce({
+      exitCode: 1,
+      signal: null,
+      timedOut: false,
+      stdout: JSON.stringify({
+        conversation_id: "conv-quota-123",
+        status: "ERROR",
+        error: "Individual quota reached. Please upgrade your subscription. Resets in 3h56m.",
+      }),
+      stderr: "",
+      pid: 125,
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await execute({
+      runId: "run-local-quota",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Antigravity CEO",
+        adapterType: "antigravity_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "agy",
+      },
+      context: {
+        paperclipWorkspace: {
+          cwd: "/home/user/workspace",
+          source: "project_primary",
+        },
+      },
+      onLog: async () => {},
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.errorCode).toBe("adapter_quota_exhausted");
+    expect(result.errorMessage).toContain("Individual quota reached");
+    expect(result.sessionId).toBe("conv-quota-123");
+  });
 });
+
 

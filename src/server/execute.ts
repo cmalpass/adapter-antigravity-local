@@ -39,7 +39,8 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import { DEFAULT_ANTIGRAVITY_LOCAL_MODEL, SANDBOX_INSTALL_COMMAND } from "../index.js";
 import { firstNonEmptyLine, resolveModelCliArgs } from "../utils.js";
-import { parseAntigravityJsonResponse } from "./parse.js";
+import { parseAntigravityJsonResponse, detectAntigravityQuotaExhausted } from "./parse.js";
+
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -137,6 +138,17 @@ function compileAgentPrompt(
  * @param workspaces - Active Paperclip workspace mappings to register.
  * @param sandbox - Indicates whether OS and terminal sandboxing is enabled.
  * @param extraArgs - Structured list of user-defined CLI arguments to append.
+/**
+ * Generates the clean CLI argument list for spawning the `agy` process.
+ * Maps session IDs, prompts, and active workspaces to repeatable arguments.
+ * 
+ * @param prompt - The compiled orchestrator prompt payload.
+ * @param model - Target model identifier.
+ * @param resumeSessionId - Optional session ID to resume (resets turn contexts).
+ * @param workspaces - Active Paperclip workspace mappings to register.
+ * @param sandbox - Indicates whether OS and terminal sandboxing is enabled.
+ * @param extraArgs - Structured list of user-defined CLI arguments to append.
+ * @param timeoutSec - Execution timeout in seconds.
  * @returns An array representing the formatted CLI arguments list.
  */
 function compileAgyArguments(
@@ -145,9 +157,19 @@ function compileAgyArguments(
   resumeSessionId: string | null,
   workspaces: unknown[],
   sandbox: boolean,
-  extraArgs: string[]
+  extraArgs: string[],
+  timeoutSec: number
 ): string[] {
   const args = ["--print", prompt, "--output-format", "json"];
+
+  // agy defaults to 5m (300s) timeout if --print-timeout is omitted.
+  // Set an explicit timeout matching Paperclip's configuration, or a 2h window if no timeout is configured.
+  if (timeoutSec > 0) {
+    args.push("--print-timeout", `${timeoutSec}s`);
+  } else {
+    args.push("--print-timeout", "2h");
+  }
+
   if (resumeSessionId) {
     args.push("--conversation", resumeSessionId);
   }
@@ -302,7 +324,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const runAttempt = async (resumeSessionId: string | null) => {
     const workspaces = Array.isArray(context.paperclipWorkspaces) ? context.paperclipWorkspaces : [];
-    const args = compileAgyArguments(prompt, model, resumeSessionId, workspaces, sandbox, extraArgs);
+    const args = compileAgyArguments(prompt, model, resumeSessionId, workspaces, sandbox, extraArgs, timeoutSec);
     
     if (onMeta) {
       await onMeta({
@@ -337,17 +359,42 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         signal: proc.signal,
         timedOut: true,
         errorMessage: `Timed out after ${timeoutSec}s`,
-        errorCode: null,
+        errorCode: "adapter_timeout",
         clearSession: false,
       };
     }
 
-    const failed = (proc.exitCode ?? 0) !== 0;
     const rawStdout = proc.stdout.trim();
     const rawStderr = proc.stderr.trim();
-    const fallbackErrorMessage = firstNonEmptyLine(rawStderr) || `Antigravity exited with code ${proc.exitCode ?? -1}`;
-
     const parsedJson = parseAntigravityJsonResponse(rawStdout);
+    const jsonError = parsedJson?.error?.trim();
+
+    const failed = (proc.exitCode ?? 0) !== 0 || parsedJson?.status === "ERROR";
+    const isTimeout = Boolean(jsonError?.toLowerCase().includes("timeout") || proc.timedOut);
+    const isQuota = Boolean(
+      jsonError
+        ? detectAntigravityQuotaExhausted({ stdout: jsonError, stderr: rawStderr }).exhausted
+        : detectAntigravityQuotaExhausted({ stdout: rawStdout, stderr: rawStderr }).exhausted,
+    );
+
+    let fallbackErrorMessage: string | null = null;
+    if (failed) {
+      if (jsonError) {
+        fallbackErrorMessage = jsonError;
+      } else {
+        fallbackErrorMessage = firstNonEmptyLine(rawStderr) || `Antigravity exited with code ${proc.exitCode ?? -1}`;
+      }
+    }
+
+    let resolvedErrorCode: string | null = null;
+    if (isQuota) {
+      resolvedErrorCode = "adapter_quota_exhausted";
+    } else if (isTimeout) {
+      resolvedErrorCode = "adapter_timeout";
+    } else if (failed) {
+      resolvedErrorCode = "adapter_failed";
+    }
+
     const parsedResponseText = parsedJson?.response?.trim() ?? rawStdout;
     const resolvedSessionId = parsedJson?.conversation_id || sessionId || null;
 
@@ -367,9 +414,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     return {
       exitCode: proc.exitCode,
       signal: proc.signal,
-      timedOut: false,
+      timedOut: isTimeout,
       errorMessage: failed ? fallbackErrorMessage : null,
-      errorCode: null,
+      errorCode: resolvedErrorCode,
       usage: {
         inputTokens,
         outputTokens,
@@ -378,6 +425,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       sessionId: resolvedSessionId,
       sessionParams: resolvedSessionParams,
       sessionDisplayId: resolvedSessionId,
+
       provider: "google",
       biller: "google",
       model,

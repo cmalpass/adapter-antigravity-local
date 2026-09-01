@@ -123,6 +123,7 @@ export interface AntigravityJsonResponse {
   conversation_id?: string;
   status?: string;
   response?: string;
+  error?: string;
   duration_seconds?: number;
   num_turns?: number;
   usage?: {
@@ -133,6 +134,7 @@ export interface AntigravityJsonResponse {
     total_tokens?: number;
   };
 }
+
 
 /**
  * Safely parses the stdout output produced by `agy --output-format json`.
