@@ -91,8 +91,9 @@ describe("antigravity local execution", () => {
     const cliArgs = callArgs[3];
     expect(cliArgs).toContain("--print");
     expect(cliArgs).toContain("--output-format");
-    expect(cliArgs).toContain("json");
+    expect(cliArgs).toContain("stream-json");
     expect(cliArgs).toContain("--dangerously-skip-permissions");
+
   });
 
   /**
@@ -333,6 +334,67 @@ describe("antigravity local execution", () => {
     expect(result.errorMessage).toContain("Individual quota reached");
     expect(result.sessionId).toBe("conv-quota-123");
   });
+
+  /**
+   * Asserts that NDJSON stream events stream in real-time and parse into final result.
+   */
+  it("streams NDJSON lines in real time and extracts the final result event", async () => {
+    const streamedLogs: string[] = [];
+    runAdapterExecutionTargetProcess.mockImplementationOnce(async (_runId, _target, _cmd, _args, opts) => {
+      if (opts?.onLog) {
+        await opts.onLog("stdout", '{"event":"step_update","step_update":{"state":"ACTIVE","text_delta":"Processing"}}\n');
+        await opts.onLog("stdout", '{"event":"step_update","step_update":{"state":"DONE","text_delta":" done"}}\n');
+        await opts.onLog("stdout", '{"event":"result","result":{"conversation_id":"conv-stream-1","status":"SUCCESS","response":"Processing done"}}\n');
+      }
+      return {
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        stdout: [
+          '{"event":"step_update","step_update":{"state":"ACTIVE","text_delta":"Processing"}}',
+          '{"event":"step_update","step_update":{"state":"DONE","text_delta":" done"}}',
+          '{"event":"result","result":{"conversation_id":"conv-stream-1","status":"SUCCESS","response":"Processing done"}}',
+        ].join("\n"),
+        stderr: "",
+        pid: 126,
+        startedAt: new Date().toISOString(),
+      };
+    });
+
+    const result = await execute({
+      runId: "run-local-stream",
+      agent: {
+        id: "agent-1",
+        companyId: "company-1",
+        name: "Antigravity CEO",
+        adapterType: "antigravity_local",
+        adapterConfig: {},
+      },
+      runtime: {
+        sessionId: null,
+        sessionParams: null,
+        sessionDisplayId: null,
+        taskKey: null,
+      },
+      config: {
+        command: "agy",
+      },
+      context: {
+        paperclipWorkspace: {
+          cwd: "/home/user/workspace",
+          source: "project_primary",
+        },
+      },
+      onLog: async (stream, chunk) => {
+        if (stream === "stdout") streamedLogs.push(chunk);
+      },
+    });
+
+    expect(result.summary).toBe("Processing done");
+    expect(result.sessionId).toBe("conv-stream-1");
+    expect(streamedLogs.length).toBeGreaterThan(0);
+  });
 });
+
 
 

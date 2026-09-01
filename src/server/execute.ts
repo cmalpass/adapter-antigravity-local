@@ -160,7 +160,7 @@ function compileAgyArguments(
   extraArgs: string[],
   timeoutSec: number
 ): string[] {
-  const args = ["--print", prompt, "--output-format", "json"];
+  const args = ["--print", prompt, "--output-format", "stream-json"];
 
   // agy defaults to 5m (300s) timeout if --print-timeout is omitted.
   // Set an explicit timeout matching Paperclip's configuration, or a 2h window if no timeout is configured.
@@ -196,6 +196,7 @@ function compileAgyArguments(
   }
   return args;
 }
+
 
 /**
  * Core execution engine function for Google Antigravity local CLI integrations.
@@ -340,15 +341,41 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       });
     }
 
-    return await runAdapterExecutionTargetProcess(runId, runtimeExecutionTarget, command, args, {
+    // Buffer stdout by lines to handle partial NDJSON chunks cleanly
+    let stdoutBuffer = "";
+    const bufferedOnLog = async (stream: "stdout" | "stderr", chunk: string) => {
+      if (stream === "stderr") {
+        await onLog(stream, chunk);
+        return;
+      }
+
+      stdoutBuffer += chunk;
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line) {
+          await onLog(stream, line + "\n");
+        }
+      }
+    };
+
+    const proc = await runAdapterExecutionTargetProcess(runId, runtimeExecutionTarget, command, args, {
       cwd,
       env,
       timeoutSec,
       graceSec,
       onSpawn,
-      onLog,
+      onLog: bufferedOnLog,
     });
+
+    if (stdoutBuffer) {
+      await onLog("stdout", stdoutBuffer);
+    }
+
+    return proc;
   };
+
 
   try {
     const proc = await runAttempt(sessionId);

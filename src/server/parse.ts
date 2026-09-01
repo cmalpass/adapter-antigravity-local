@@ -137,7 +137,7 @@ export interface AntigravityJsonResponse {
 
 
 /**
- * Safely parses the stdout output produced by `agy --output-format json`.
+ * Safely parses the stdout output produced by `agy --output-format json` or `--output-format stream-json`.
  * Recovers JSON payloads even when surrounded by prefix/suffix logs or formatting anomalies.
  *
  * @param stdout - The stdout string output from the agy process.
@@ -149,10 +149,42 @@ export function parseAntigravityJsonResponse(stdout: string): AntigravityJsonRes
     return null;
   }
 
+  // If output contains multiple lines (stream-json format), look for the result event
+  if (trimmed.includes("\n")) {
+    const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+    let capturedConvId: string | undefined;
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.conversation_id && !capturedConvId) {
+          capturedConvId = parsed.conversation_id;
+        }
+        if (parsed.event === "result" && parsed.result) {
+          return {
+            conversation_id: parsed.result.conversation_id || capturedConvId,
+            status: parsed.result.status,
+            response: parsed.result.response,
+            error: parsed.result.error,
+            duration_seconds: parsed.result.duration_seconds,
+            num_turns: parsed.result.num_turns,
+            usage: parsed.result.usage,
+          };
+        }
+      } catch {
+        // Continue searching
+      }
+    }
+  }
+
   // Attempt direct JSON parse
   try {
     const parsed = JSON.parse(trimmed);
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      if (parsed.event === "result" && parsed.result) {
+        return parsed.result as AntigravityJsonResponse;
+      }
       return parsed as AntigravityJsonResponse;
     }
   } catch {
@@ -164,6 +196,9 @@ export function parseAntigravityJsonResponse(stdout: string): AntigravityJsonRes
         const candidate = trimmed.slice(startIdx, endIdx + 1);
         const parsed = JSON.parse(candidate);
         if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          if (parsed.event === "result" && parsed.result) {
+            return parsed.result as AntigravityJsonResponse;
+          }
           return parsed as AntigravityJsonResponse;
         }
       } catch {
